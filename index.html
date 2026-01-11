@@ -1,126 +1,196 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Hand Tracking</title>
+    <title>AI Particle System - Final</title>
     <style>
-        /* Force the button to be visible no matter what */
-        body, html { 
-            margin: 0; padding: 0; width: 100%; height: 100%; 
-            background-color: #000; overflow: hidden; 
-        }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
         
+        /* Loading/Start Screen */
         #overlay {
-            position: fixed;
-            top: 0; left: 0; width: 100vw; height: 100vh;
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: radial-gradient(circle, #1a1a1a, #000);
-            display: flex; flex-direction: column;
-            justify-content: center; align-items: center;
-            z-index: 9999; /* Higher than everything else */
+            display: flex; flex-direction: column; justify-content: center;
+            align-items: center; z-index: 1000; transition: opacity 0.5s;
         }
 
         #start-btn {
-            padding: 25px 50px;
-            font-size: 22px;
-            color: #000;
-            background: #00ffff;
-            border: none;
-            border-radius: 15px;
-            font-weight: bold;
-            box-shadow: 0 0 30px rgba(0, 255, 255, 0.5);
-            text-transform: uppercase;
+            padding: 20px 40px; font-size: 20px; color: #000; background: #00ffff;
+            border: none; border-radius: 50px; font-weight: bold; cursor: pointer;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5); text-transform: uppercase;
         }
 
+        /* Success Tick Animation */
+        #tick-overlay {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0);
+            font-size: 80px; color: #00ff00; z-index: 2000;
+            background: white; border-radius: 50%; width: 120px; height: 120px;
+            display: flex; justify-content: center; align-items: center;
+            box-shadow: 0 0 40px #00ff00; pointer-events: none;
+            transition: transform 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        #tick-overlay.show { transform: translate(-50%, -50%) scale(1); }
+
         #webcam-preview {
-            position: absolute; bottom: 10px; right: 10px; 
-            width: 100px; height: auto; border: 2px solid #333;
-            border-radius: 10px; transform: scaleX(-1); z-index: 5;
+            position: absolute; bottom: 15px; right: 15px; width: 120px; 
+            border-radius: 12px; transform: scaleX(-1); border: 2px solid #00ffff;
+            z-index: 5; background: #111;
+        }
+
+        #status-bar {
+            position: absolute; top: 15px; left: 15px; color: #00ffff;
+            background: rgba(0,0,0,0.5); padding: 8px 15px; border-radius: 20px;
+            font-size: 14px; pointer-events: none; z-index: 10;
         }
     </style>
 </head>
 <body>
 
     <div id="overlay">
-        <h1 style="color:white; margin-bottom:20px;">3D Particles</h1>
-        <button id="start-btn">TAP TO START</button>
-        <p style="color:gray; margin-top:20px;">Click to allow camera</p>
+        <h1 style="color:white; margin-bottom:20px;">AI HAND PARTICLES</h1>
+        <button id="start-btn">Start System</button>
+        <p style="color:gray; margin-top:15px;">Allow camera when prompted</p>
     </div>
 
+    <div id="tick-overlay">✔</div>
+    <div id="status-bar">System: Waiting...</div>
     <video id="webcam-preview" autoplay playsinline></video>
     <div id="container"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
     <script>
-        // Use standard JS instead of modules for better TrebEdit compatibility
-        const startBtn = document.getElementById('start-btn');
-        const overlay = document.getElementById('overlay');
         const videoElement = document.getElementById('webcam-preview');
+        const startBtn = document.getElementById('start-btn');
+        const statusBar = document.getElementById('status-bar');
+        const tick = document.getElementById('tick-overlay');
         
-        let scene, camera, renderer, particles;
+        let scene, camera, renderer, particles, geometry;
+        const particleCount = 4000;
 
-        function setupThree() {
+        // 1. Initialize Three.js Scene
+        function initThree() {
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-            camera.position.z = 15;
+            camera.position.z = 25;
 
-            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
             document.getElementById('container').appendChild(renderer.domElement);
 
-            const geo = new THREE.BufferGeometry();
-            const count = 3000;
-            const pos = new Float32Array(count * 3);
-            for(let i=0; i<count*3; i++) pos[i] = (Math.random() - 0.5) * 20;
-            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-            
-            const mat = new THREE.PointsMaterial({ color: 0x00ffff, size: 0.1 });
-            particles = new THREE.Points(geo, mat);
+            geometry = new THREE.BufferGeometry();
+            const pos = new Float32Array(particleCount * 3);
+            for(let i=0; i<particleCount*3; i++) {
+                pos[i] = (Math.random() - 0.5) * 50;
+            }
+            geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+
+            const material = new THREE.PointsMaterial({
+                color: 0x00ffff,
+                size: 0.15,
+                blending: THREE.AdditiveBlending,
+                transparent: true
+            });
+
+            particles = new THREE.Points(geometry, material);
             scene.add(particles);
         }
 
+        // 2. Math for Morphing (Heart Shape)
+        function morphToHeart() {
+            const posAttr = geometry.attributes.position;
+            for (let i = 0; i < particleCount; i++) {
+                const t = Math.random() * Math.PI * 2;
+                const x = 16 * Math.pow(Math.sin(t), 3);
+                const y = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
+                
+                posAttr.array[i*3] += (x * 0.6 - posAttr.array[i*3]) * 0.1;
+                posAttr.array[i*3+1] += (y * 0.6 - posAttr.array[i*3+1]) * 0.1;
+                posAttr.array[i*3+2] += (0 - posAttr.array[i*3+2]) * 0.1;
+            }
+            posAttr.needsUpdate = true;
+        }
+
+        // 3. Hand Tracking Setup
         const hands = new Hands({
             locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
         });
 
-        hands.setOptions({ maxNumHands: 1, minDetectionConfidence: 0.5 });
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.6,
+            minTrackingConfidence: 0.6
+        });
+
         hands.onResults((results) => {
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                const tip = results.multiHandLandmarks[0][8];
-                particles.position.x = (tip.x - 0.5) * -20;
-                particles.position.y = (tip.y - 0.5) * -15;
+                const landmarks = results.multiHandLandmarks[0];
+                const indexTip = landmarks[8];
+                const thumbTip = landmarks[4];
+
+                // Smoothly move particles with finger
+                const targetX = (indexTip.x - 0.5) * -45;
+                const targetY = (indexTip.y - 0.5) * -35;
+                particles.position.x += (targetX - particles.position.x) * 0.2;
+                particles.position.y += (targetY - particles.position.y) * 0.2;
+
+                // Detect Pinch (Distance between index 8 and thumb 4)
+                const distance = Math.hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y);
+                if(distance < 0.05) {
+                    statusBar.innerText = "System: Heart Shape Activated!";
+                    morphToHeart();
+                } else {
+                    statusBar.innerText = "System: Tracking Hand...";
+                }
+            } else {
+                statusBar.innerText = "System: Hand not detected";
             }
         });
 
-        const camControl = new Camera(videoElement, {
+        const cam = new Camera(videoElement, {
             onFrame: async () => { await hands.send({image: videoElement}); },
             width: 640, height: 480
         });
 
-        // ACTIVATE ON CLICK
-        startBtn.onclick = function() {
-            overlay.style.display = 'none';
-            setupThree();
-            camControl.start();
+        // 4. Execution Logic
+        startBtn.onclick = async () => {
+            document.getElementById('overlay').style.opacity = '0';
+            setTimeout(() => { document.getElementById('overlay').style.display = 'none'; }, 500);
             
-            function animate() {
-                requestAnimationFrame(animate);
-                particles.rotation.y += 0.01;
-                renderer.render(scene, camera);
+            statusBar.innerText = "System: Starting Engine...";
+            initThree();
+
+            try {
+                await cam.start();
+                // Everything is loaded: Show Tick for 3 seconds
+                tick.classList.add('show');
+                setTimeout(() => { tick.classList.remove('show'); }, 3000);
+                
+                function animate() {
+                    requestAnimationFrame(animate);
+                    particles.rotation.y += 0.002;
+                    renderer.render(scene, camera);
+                }
+                animate();
+            } catch (err) {
+                statusBar.innerText = "Error: Camera Denied";
+                alert("Please enable camera permissions!");
             }
-            animate();
         };
 
-        window.onresize = function() {
+        window.addEventListener('resize', () => {
             if(camera) {
                 camera.aspect = window.innerWidth / window.innerHeight;
                 camera.updateProjectionMatrix();
                 renderer.setSize(window.innerWidth, window.innerHeight);
             }
-        };
+        });
+
     </script>
 </body>
 </html>
