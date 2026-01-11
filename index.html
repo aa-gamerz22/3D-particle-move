@@ -3,72 +3,49 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Holographic AI Interface</title>
+    <title>Upside Down: Telekinesis</title>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #050000; overflow: hidden; font-family: 'serif'; }
         
         #overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: radial-gradient(circle, #001a1a, #000);
+            background: linear-gradient(to bottom, #1a0000, #000);
             display: flex; flex-direction: column; justify-content: center;
-            align-items: center; z-index: 1000;
+            align-items: center; z-index: 1000; color: #ff0000;
         }
 
         #start-btn {
-            padding: 15px 40px; font-size: 18px; color: #00ffff; background: transparent;
-            border: 1px solid #00ffff; border-radius: 5px; cursor: pointer;
-            box-shadow: 0 0 15px #00ffff; text-transform: uppercase; letter-spacing: 5px;
+            padding: 15px 40px; font-size: 20px; color: #ff0000; background: transparent;
+            border: 2px solid #ff0000; cursor: pointer; text-transform: uppercase;
+            letter-spacing: 5px; box-shadow: 0 0 20px #500;
         }
 
-        /* Hologram HUD Styling */
-        #hud-container {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            pointer-events: none; z-index: 5; display: none;
-            border: 20px solid rgba(0, 255, 255, 0.05); box-sizing: border-box;
-        }
-
-        .hud-line {
-            position: absolute; background: rgba(0, 255, 255, 0.2);
-        }
-
-        #status-box {
-            position: absolute; bottom: 40px; left: 40px; color: #00ffff;
-            padding: 15px; border: 1px solid #00ffff; background: rgba(0, 30, 30, 0.5);
-            font-size: 12px; text-transform: uppercase; line-height: 1.5;
+        #status-ui {
+            position: absolute; top: 20px; left: 20px; color: #ff3333;
+            font-size: 14px; text-shadow: 0 0 10px #f00; z-index: 10;
         }
 
         #webcam-preview {
-            position: absolute; top: 40px; right: 40px; width: 150px; 
-            border: 1px solid #00ffff; opacity: 0.3; transform: scaleX(-1);
+            position: absolute; bottom: 20px; right: 20px; width: 120px; 
+            border: 1px solid #300; opacity: 0.4; transform: scaleX(-1);
         }
 
-        /* Scanline Effect */
-        body::after {
-            content: " "; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), 
-                        linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
-            background-size: 100% 4px, 3px 100%; pointer-events: none; z-index: 100;
+        /* Red Vignette Effect */
+        body::before {
+            content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            box-shadow: inset 0 0 200px rgba(255,0,0,0.3); pointer-events: none; z-index: 5;
         }
     </style>
 </head>
 <body>
 
     <div id="overlay">
-        <h1 style="color:#00ffff; letter-spacing:10px; font-weight:100;">HOLOGRAM OS</h1>
-        <button id="start-btn">Connect Neural Link</button>
+        <h1 style="letter-spacing:15px; text-shadow: 0 0 20px #f00;">THE UPSIDE DOWN</h1>
+        <button id="start-btn">ENTER THE VOID</button>
+        <p style="margin-top:20px; font-size:12px; opacity:0.6;">USE YOUR HANDS TO CONTROL REALITY</p>
     </div>
 
-    <div id="hud-container">
-        <div id="status-box">
-            CORE: STABLE<br>
-            SIGNAL: ENCRYPTED<br>
-            USER: AUTHORIZED<br>
-            <span id="gesture-text">SCANNING...</span>
-        </div>
-        <div class="hud-line" style="width:100%; height:1px; top:20%;"></div>
-        <div class="hud-line" style="width:1px; height:100%; left:20%;"></div>
-    </div>
-
+    <div id="status-ui">BRAIN LINK: WAITING...</div>
     <video id="webcam-preview" autoplay playsinline></video>
     <div id="container"></div>
 
@@ -79,62 +56,84 @@
     <script>
         const videoElement = document.getElementById('webcam-preview');
         const startBtn = document.getElementById('start-btn');
-        const hud = document.getElementById('hud-container');
-        const gestureText = document.getElementById('gesture-text');
+        const statusUI = document.getElementById('status-ui');
         
-        let scene, camera, renderer, points, grid;
-        const count = 5000;
+        let scene, camera, renderer, objectToControl, ashParticles;
+        let isCrushing = false;
 
-        function initHologram() {
+        function initUpsideDown() {
             scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-            camera.position.z = 50;
+            scene.fog = new THREE.FogExp2(0x050000, 0.015); // Stranger Things Fog
 
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 5, 30);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.getElementById('container').appendChild(renderer.domElement);
 
-            // Create Grid Base
-            grid = new THREE.GridHelper(100, 20, 0x00ffff, 0x004444);
-            grid.rotation.x = Math.PI / 2.5;
-            grid.position.y = -20;
+            // Red & Blue Moody Lights
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+            scene.add(ambientLight);
+            const redLight = new THREE.PointLight(0xff0000, 2, 100);
+            redLight.position.set(10, 10, 10);
+            scene.add(redLight);
+
+            // Floating Ash Particles
+            const ashGeo = new THREE.BufferGeometry();
+            const ashCount = 3000;
+            const ashPos = new Float32Array(ashCount * 3);
+            for(let i=0; i<ashCount*3; i++) ashPos[i] = (Math.random() - 0.5) * 100;
+            ashGeo.setAttribute('position', new THREE.BufferAttribute(ashPos, 3));
+            const ashMat = new THREE.PointsMaterial({ color: 0x888888, size: 0.1, transparent: true, opacity: 0.5 });
+            ashParticles = new THREE.Points(ashGeo, ashMat);
+            scene.add(ashParticles);
+
+            // The Object we will control (Floating Core)
+            const objGeo = new THREE.IcosahedronGeometry(4, 0);
+            const objMat = new THREE.MeshPhongMaterial({ color: 0x111111, wireframe: true, emissive: 0x330000 });
+            objectToControl = new THREE.Mesh(objGeo, objMat);
+            objectToControl.position.y = 5;
+            scene.add(objectToControl);
+
+            // Floor Grid (Vines feel)
+            const grid = new THREE.GridHelper(200, 40, 0x330000, 0x110000);
             scene.add(grid);
-
-            // Create Floating Particles
-            const geo = new THREE.BufferGeometry();
-            const pos = new Float32Array(count * 3);
-            for(let i=0; i<count*3; i++) pos[i] = (Math.random() - 0.5) * 100;
-            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-
-            const mat = new THREE.PointsMaterial({ 
-                color: 0x00ffff, size: 0.2, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending 
-            });
-            points = new THREE.Points(geo, mat);
-            scene.add(points);
         }
 
         const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
-        hands.setOptions({ maxNumHands: 1, minDetectionConfidence: 0.6 });
+        hands.setOptions({ maxNumHands: 1, minDetectionConfidence: 0.7 });
         
         hands.onResults((results) => {
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 const marks = results.multiHandLandmarks[0];
                 const index = marks[8];
+                const thumb = marks[4];
 
-                // Interface Tilt Effect
-                const targetRotY = (index.x - 0.5) * 0.5;
-                const targetRotX = (index.y - 0.5) * 0.5;
+                // Telekinesis Movement
+                const tx = (index.x - 0.5) * -50;
+                const ty = (index.y - 0.5) * -30 + 10;
                 
-                scene.rotation.y += (targetRotY - scene.rotation.y) * 0.1;
-                scene.rotation.x += (targetRotX - scene.rotation.x) * 0.1;
+                // Move object towards hand position
+                objectToControl.position.x += (tx - objectToControl.position.x) * 0.1;
+                objectToControl.position.y += (ty - objectToControl.position.y) * 0.1;
 
-                // Particle Attraction
-                const tx = (index.x - 0.5) * -80;
-                const ty = (index.y - 0.5) * -60;
-                points.position.x += (tx - points.position.x) * 0.2;
-                points.position.y += (ty - points.position.y) * 0.2;
+                // Detect Gestures
+                const distance = Math.hypot(index.x - thumb.x, index.y - thumb.y);
+                const isFist = marks[8].y > marks[6].y && marks[12].y > marks[10].y;
 
-                gestureText.innerText = "LINK: ACTIVE | X: " + index.x.toFixed(2);
+                if (isFist) { // 👊 CRUSH
+                    statusUI.innerText = "BRAIN LINK: CRUSHING OBJECT";
+                    objectToControl.scale.lerp(new THREE.Vector3(0.2, 0.2, 0.2), 0.1);
+                    objectToControl.rotation.x += 0.5;
+                } else if (distance < 0.05) { // 👌 PINCH / HOLD
+                    statusUI.innerText = "BRAIN LINK: OBJECT SECURED";
+                    objectToControl.scale.lerp(new THREE.Vector3(1.2, 1.2, 1.2), 0.1);
+                    objectToControl.rotation.y += 0.1;
+                } else { // 🖐️ OPEN PALM
+                    statusUI.innerText = "BRAIN LINK: STABLE";
+                    objectToControl.scale.lerp(new THREE.Vector3(1, 1, 1), 0.05);
+                }
             }
         });
 
@@ -145,14 +144,16 @@
 
         startBtn.onclick = async () => {
             document.getElementById('overlay').style.display = 'none';
-            hud.style.display = 'block';
-            initHologram();
+            initUpsideDown();
             await cam.start();
             
             function animate() {
                 requestAnimationFrame(animate);
-                points.rotation.y += 0.001;
-                grid.material.opacity = 0.2 + Math.random() * 0.1; // Flicker effect
+                // Float Ash
+                ashParticles.position.y -= 0.02;
+                if(ashParticles.position.y < -20) ashParticles.position.y = 20;
+                
+                objectToControl.rotation.z += 0.01;
                 renderer.render(scene, camera);
             }
             animate();
