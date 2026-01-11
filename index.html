@@ -3,42 +3,72 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI Kinetic Sandbox - 3D</title>
+    <title>Holographic AI Interface</title>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
+        
         #overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: radial-gradient(circle, #111, #000);
+            background: radial-gradient(circle, #001a1a, #000);
             display: flex; flex-direction: column; justify-content: center;
-            align-items: center; z-index: 1000; transition: 0.8s;
+            align-items: center; z-index: 1000;
         }
+
         #start-btn {
-            padding: 18px 50px; font-size: 18px; color: #00ffff; background: transparent;
-            border: 2px solid #00ffff; border-radius: 50px; font-weight: bold; cursor: pointer;
-            box-shadow: 0 0 20px rgba(0,255,255,0.3); letter-spacing: 2px;
+            padding: 15px 40px; font-size: 18px; color: #00ffff; background: transparent;
+            border: 1px solid #00ffff; border-radius: 5px; cursor: pointer;
+            box-shadow: 0 0 15px #00ffff; text-transform: uppercase; letter-spacing: 5px;
         }
-        #loading-container { display: none; flex-direction: column; align-items: center; width: 250px; margin-top: 30px; }
-        #progress-bar { width: 0%; height: 4px; background: #00ffff; box-shadow: 0 0 15px #00ffff; transition: 0.3s; }
-        #status-bar {
-            position: absolute; top: 20px; left: 20px; color: #00ffff;
-            background: rgba(0,0,0,0.6); padding: 10px 20px; border-radius: 10px;
-            font-size: 13px; border: 1px solid #00ffff; z-index: 10; backdrop-filter: blur(10px);
+
+        /* Hologram HUD Styling */
+        #hud-container {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 5; display: none;
+            border: 20px solid rgba(0, 255, 255, 0.05); box-sizing: border-box;
         }
-        #webcam-preview { position: absolute; bottom: 20px; right: 20px; width: 120px; border-radius: 10px; transform: scaleX(-1); opacity: 0.5; }
+
+        .hud-line {
+            position: absolute; background: rgba(0, 255, 255, 0.2);
+        }
+
+        #status-box {
+            position: absolute; bottom: 40px; left: 40px; color: #00ffff;
+            padding: 15px; border: 1px solid #00ffff; background: rgba(0, 30, 30, 0.5);
+            font-size: 12px; text-transform: uppercase; line-height: 1.5;
+        }
+
+        #webcam-preview {
+            position: absolute; top: 40px; right: 40px; width: 150px; 
+            border: 1px solid #00ffff; opacity: 0.3; transform: scaleX(-1);
+        }
+
+        /* Scanline Effect */
+        body::after {
+            content: " "; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), 
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 4px, 3px 100%; pointer-events: none; z-index: 100;
+        }
     </style>
 </head>
 <body>
 
     <div id="overlay">
-        <h1 style="color:white; letter-spacing:5px;">KINETIC AI</h1>
-        <button id="start-btn">BOOT SYSTEM</button>
-        <div id="loading-container">
-            <div style="width:100%; height:2px; background:#222; margin-bottom:10px;"><div id="progress-bar"></div></div>
-            <div id="percent-text" style="color:#00ffff;">0%</div>
-        </div>
+        <h1 style="color:#00ffff; letter-spacing:10px; font-weight:100;">HOLOGRAM OS</h1>
+        <button id="start-btn">Connect Neural Link</button>
     </div>
 
-    <div id="status-bar" style="display:none;">NEURAL LINK: ACTIVE</div>
+    <div id="hud-container">
+        <div id="status-box">
+            CORE: STABLE<br>
+            SIGNAL: ENCRYPTED<br>
+            USER: AUTHORIZED<br>
+            <span id="gesture-text">SCANNING...</span>
+        </div>
+        <div class="hud-line" style="width:100%; height:1px; top:20%;"></div>
+        <div class="hud-line" style="width:1px; height:100%; left:20%;"></div>
+    </div>
+
     <video id="webcam-preview" autoplay playsinline></video>
     <div id="container"></div>
 
@@ -49,108 +79,62 @@
     <script>
         const videoElement = document.getElementById('webcam-preview');
         const startBtn = document.getElementById('start-btn');
-        const statusBar = document.getElementById('status-bar');
+        const hud = document.getElementById('hud-container');
+        const gestureText = document.getElementById('gesture-text');
         
-        let scene, camera, renderer, particles, geometry;
-        const particleCount = 8000;
-        let mode = 'idle'; 
-        let hue = 180;
+        let scene, camera, renderer, points, grid;
+        const count = 5000;
 
-        function initThree() {
+        function initHologram() {
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-            camera.position.z = 40;
+            camera.position.z = 50;
+
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.getElementById('container').appendChild(renderer.domElement);
 
-            geometry = new THREE.BufferGeometry();
-            const pos = new Float32Array(particleCount * 3);
-            const colors = new Float32Array(particleCount * 3);
-            for(let i=0; i<particleCount*3; i++) {
-                pos[i] = (Math.random() - 0.5) * 80;
-                colors[i] = Math.random();
-            }
-            geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            // Create Grid Base
+            grid = new THREE.GridHelper(100, 20, 0x00ffff, 0x004444);
+            grid.rotation.x = Math.PI / 2.5;
+            grid.position.y = -20;
+            scene.add(grid);
 
-            const mat = new THREE.PointsMaterial({ size: 0.15, vertexColors: true, blending: THREE.AdditiveBlending, transparent: true });
-            particles = new THREE.Points(geometry, mat);
-            scene.add(particles);
+            // Create Floating Particles
+            const geo = new THREE.BufferGeometry();
+            const pos = new Float32Array(count * 3);
+            for(let i=0; i<count*3; i++) pos[i] = (Math.random() - 0.5) * 100;
+            geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+
+            const mat = new THREE.PointsMaterial({ 
+                color: 0x00ffff, size: 0.2, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending 
+            });
+            points = new THREE.Points(geo, mat);
+            scene.add(points);
         }
 
         const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
-        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.6 });
+        hands.setOptions({ maxNumHands: 1, minDetectionConfidence: 0.6 });
         
         hands.onResults((results) => {
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 const marks = results.multiHandLandmarks[0];
                 const index = marks[8];
-                const thumb = marks[4];
-                const middle = marks[12];
-                const pinky = marks[20];
 
-                // Physics Targets
-                const tx = (index.x - 0.5) * -60;
-                const ty = (index.y - 0.5) * -45;
-
-                // --- GESTURE DETECTION ---
-                const distPinch = Math.hypot(index.x - thumb.x, index.y - thumb.y);
-                const isFist = index.y > marks[6].y && middle.y > marks[10].y && pinky.y > marks[18].y;
-                const isOneFinger = index.y < marks[6].y && middle.y > marks[10].y;
-                const isSpider = index.y < marks[6].y && pinky.y < marks[18].y && thumb.y < marks[2].y;
-                const isTinyPinch = Math.hypot(marks[20].x - thumb.x, marks[20].y - thumb.y) < 0.04;
-
-                const pos = geometry.attributes.position.array;
-                const cols = geometry.attributes.color.array;
-
-                if (isFist) { // BLACK HOLE 👊
-                    mode = "BLACK HOLE";
-                    for(let i=0; i<particleCount; i++){
-                        pos[i*3] *= 0.92; pos[i*3+1] *= 0.92; pos[i*3+2] *= 0.92;
-                    }
-                } else if (isOneFinger) { // COMPRESS 👆
-                    mode = "COMPRESS";
-                    for(let i=0; i<particleCount; i++){
-                        pos[i*3] += (0 - pos[i*3]) * 0.1;
-                        pos[i*3+1] += (0 - pos[i*3+1]) * 0.1;
-                    }
-                } else if (isSpider) { // GRAVITY PULL 🤟
-                    mode = "GRAVITY PULL";
-                    for(let i=0; i<particleCount; i++){
-                        pos[i*3] += (tx - pos[i*3]) * 0.05;
-                        pos[i*3+1] += (ty - pos[i*3+1]) * 0.05;
-                    }
-                } else if (distPinch < 0.04) { // HEART 👌
-                    mode = "HEART FORM";
-                    for(let i=0; i<particleCount; i++){
-                        const t = Math.random() * Math.PI * 2;
-                        const x = 16 * Math.pow(Math.sin(t), 3) * 0.7;
-                        const y = (13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t)) * 0.7;
-                        pos[i*3] += (x - pos[i*3]) * 0.1; pos[i*3+1] += (y - pos[i*3+1]) * 0.1;
-                    }
-                } else if (isTinyPinch) { // COLOR CHANGE 🤏
-                    mode = "COLOR SHIFT";
-                    hue = (hue + 5) % 360;
-                    const c = new THREE.Color(`hsl(${hue}, 100%, 50%)`);
-                    for(let i=0; i<particleCount; i++){
-                        cols[i*3] = c.r; cols[i*3+1] = c.g; cols[i*3+2] = c.b;
-                    }
-                } else { // NORMAL EXPAND 🖐️
-                    mode = "FREE FLOW";
-                    particles.position.x += (tx - particles.position.x) * 0.1;
-                    particles.position.y += (ty - particles.position.y) * 0.1;
-                    for(let i=0; i<particleCount; i++){
-                        if(Math.abs(pos[i*3]) < 0.1) {
-                            pos[i*3] = (Math.random()-0.5)*80;
-                            pos[i*3+1] = (Math.random()-0.5)*80;
-                        }
-                    }
-                }
+                // Interface Tilt Effect
+                const targetRotY = (index.x - 0.5) * 0.5;
+                const targetRotX = (index.y - 0.5) * 0.5;
                 
-                geometry.attributes.position.needsUpdate = true;
-                geometry.attributes.color.needsUpdate = true;
-                statusBar.innerText = "GESTURE: " + mode;
+                scene.rotation.y += (targetRotY - scene.rotation.y) * 0.1;
+                scene.rotation.x += (targetRotX - scene.rotation.x) * 0.1;
+
+                // Particle Attraction
+                const tx = (index.x - 0.5) * -80;
+                const ty = (index.y - 0.5) * -60;
+                points.position.x += (tx - points.position.x) * 0.2;
+                points.position.y += (ty - points.position.y) * 0.2;
+
+                gestureText.innerText = "LINK: ACTIVE | X: " + index.x.toFixed(2);
             }
         });
 
@@ -160,23 +144,19 @@
         });
 
         startBtn.onclick = async () => {
-            startBtn.style.display = 'none';
-            document.getElementById('loading-container').style.display = 'flex';
-            initThree();
+            document.getElementById('overlay').style.display = 'none';
+            hud.style.display = 'block';
+            initHologram();
             await cam.start();
-            document.getElementById('overlay').style.opacity = '0';
-            setTimeout(() => {
-                document.getElementById('overlay').style.display = 'none';
-                statusBar.style.display = 'block';
-                function animate() {
-                    requestAnimationFrame(animate);
-                    particles.rotation.z += 0.001;
-                    renderer.render(scene, camera);
-                }
-                animate();
-            }, 800);
+            
+            function animate() {
+                requestAnimationFrame(animate);
+                points.rotation.y += 0.001;
+                grid.material.opacity = 0.2 + Math.random() * 0.1; // Flicker effect
+                renderer.render(scene, camera);
+            }
+            animate();
         };
     </script>
 </body>
-    </html>
-    
+</html>
