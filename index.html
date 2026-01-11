@@ -3,77 +3,61 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI Particle System - Loading Pro</title>
+    <title>Cosmic Hand Controller - 3D</title>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
         
-        /* Main Start Overlay */
         #overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: radial-gradient(circle, #1a1a1a, #000);
+            background: radial-gradient(circle, #001529, #000);
             display: flex; flex-direction: column; justify-content: center;
-            align-items: center; z-index: 1000; transition: opacity 0.5s;
+            align-items: center; z-index: 1000; transition: opacity 0.8s ease;
         }
 
         #start-btn {
-            padding: 20px 50px; font-size: 22px; color: #000; background: #00ffff;
-            border: none; border-radius: 50px; font-weight: bold; cursor: pointer;
-            box-shadow: 0 0 25px rgba(0, 255, 255, 0.6); text-transform: uppercase;
-            letter-spacing: 2px; transition: 0.3s;
+            padding: 20px 60px; font-size: 20px; color: #fff; background: transparent;
+            border: 2px solid #00ffff; border-radius: 50px; font-weight: bold; cursor: pointer;
+            box-shadow: 0 0 20px #00ffff; text-transform: uppercase; letter-spacing: 3px;
         }
-        #start-btn:active { transform: scale(0.95); }
 
-        /* Loading Container */
-        #loading-container {
-            display: none; flex-direction: column; align-items: center; width: 250px; margin-top: 20px;
-        }
-        #progress-wrapper {
-            width: 100%; height: 8px; background: #333; border-radius: 10px; overflow: hidden; margin-bottom: 10px;
-        }
-        #progress-bar {
-            width: 0%; height: 100%; background: #00ffff; box-shadow: 0 0 15px #00ffff; transition: width 0.2s;
-        }
-        #percent-text { color: #00ffff; font-size: 18px; font-weight: bold; }
+        #loading-container { display: none; flex-direction: column; align-items: center; width: 280px; margin-top: 30px; }
+        #progress-wrapper { width: 100%; height: 4px; background: #111; border-radius: 10px; overflow: hidden; margin-bottom: 15px; }
+        #progress-bar { width: 0%; height: 100%; background: #00ffff; box-shadow: 0 0 15px #00ffff; transition: width 0.3s; }
+        #percent-text { color: #00ffff; font-size: 24px; font-weight: 200; }
 
-        /* Success Tick */
         #tick-overlay {
             position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0);
-            font-size: 80px; color: #00ff00; z-index: 2000;
-            background: white; border-radius: 50%; width: 120px; height: 120px;
-            display: flex; justify-content: center; align-items: center;
-            box-shadow: 0 0 40px #00ff00; pointer-events: none;
-            transition: transform 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            font-size: 70px; color: #00ff00; z-index: 2000; border: 4px solid #00ff00;
+            border-radius: 50%; width: 120px; height: 120px; display: flex;
+            justify-content: center; align-items: center; transition: 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
         #tick-overlay.show { transform: translate(-50%, -50%) scale(1); }
 
-        #webcam-preview {
-            position: absolute; bottom: 15px; right: 15px; width: 110px; 
-            border-radius: 12px; transform: scaleX(-1); border: 2px solid #00ffff;
-            z-index: 5; background: #111; display: none;
+        #status-bar {
+            position: absolute; top: 20px; left: 20px; color: #00ffff;
+            background: rgba(0,255,255,0.1); padding: 10px 20px; border-radius: 10px;
+            font-size: 14px; border-left: 4px solid #00ffff; z-index: 10; backdrop-filter: blur(5px);
         }
 
-        #status-bar {
-            position: absolute; top: 15px; left: 15px; color: #00ffff;
-            background: rgba(0,0,0,0.6); padding: 8px 18px; border-radius: 25px;
-            font-size: 13px; font-weight: bold; z-index: 10; border: 1px solid #00ffff;
+        #webcam-preview {
+            position: absolute; bottom: 20px; right: 20px; width: 130px; 
+            border-radius: 15px; transform: scaleX(-1); border: 1px solid #333; opacity: 0.7;
         }
     </style>
 </head>
 <body>
 
     <div id="overlay">
-        <h1 id="title" style="color:white; margin-bottom:30px; letter-spacing:3px;">AI PARTICLE GEN</h1>
-        <button id="start-btn">Initialize Engine</button>
-        
+        <h1 style="color:white; margin-bottom:20px; font-weight:200;">COSMIC ENGINE</h1>
+        <button id="start-btn">Launch Experience</button>
         <div id="loading-container">
             <div id="progress-wrapper"><div id="progress-bar"></div></div>
             <div id="percent-text">0%</div>
-            <p style="color:gray; font-size:12px; margin-top:10px;">Loading AI Neural Models...</p>
         </div>
     </div>
 
     <div id="tick-overlay">✔</div>
-    <div id="status-bar" style="display:none;">System: Ready</div>
+    <div id="status-bar" style="display:none;">NEURAL LINK: READY</div>
     <video id="webcam-preview" autoplay playsinline></video>
     <div id="container"></div>
 
@@ -87,58 +71,113 @@
         const loadingContainer = document.getElementById('loading-container');
         const progressBar = document.getElementById('progress-bar');
         const percentText = document.getElementById('percent-text');
-        const tick = document.getElementById('tick-overlay');
         const statusBar = document.getElementById('status-bar');
         
         let scene, camera, renderer, particles, geometry;
-        const particleCount = 4500;
+        const particleCount = 6000;
+        let currentShape = 'random'; // random, earth, saturn
 
         function initThree() {
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-            camera.position.z = 25;
+            camera.position.z = 30;
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
             document.getElementById('container').appendChild(renderer.domElement);
 
             geometry = new THREE.BufferGeometry();
             const pos = new Float32Array(particleCount * 3);
-            for(let i=0; i<particleCount*3; i++) pos[i] = (Math.random() - 0.5) * 50;
+            const colors = new Float32Array(particleCount * 3);
+            for(let i=0; i<particleCount*3; i++) {
+                pos[i] = (Math.random() - 0.5) * 60;
+                colors[i] = Math.random();
+            }
             geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-            const material = new THREE.PointsMaterial({ color: 0x00ffff, size: 0.14, blending: THREE.AdditiveBlending, transparent: true });
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+            const material = new THREE.PointsMaterial({ 
+                size: 0.12, 
+                vertexColors: true, 
+                blending: THREE.AdditiveBlending,
+                transparent: true,
+                opacity: 0.8
+            });
             particles = new THREE.Points(geometry, material);
             scene.add(particles);
         }
 
-        const hands = new Hands({
-            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-        });
+        // --- SHAPE TRANSFORMATIONS ---
+        function applyMorph() {
+            const pos = geometry.attributes.position.array;
+            const colors = geometry.attributes.color.array;
 
-        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
+            for (let i = 0; i < particleCount; i++) {
+                let tx, ty, tz, r, g, b;
+
+                if (currentShape === 'earth') {
+                    // Sphere Math
+                    const phi = Math.acos(-1 + (2 * i) / particleCount);
+                    const theta = Math.sqrt(particleCount * Math.PI) * phi;
+                    tx = 10 * Math.cos(theta) * Math.sin(phi);
+                    ty = 10 * Math.sin(theta) * Math.sin(phi);
+                    tz = 10 * Math.cos(phi);
+                    r = 0; g = 0.5; b = 1; // Earth Blue
+                } else if (currentShape === 'saturn') {
+                    if (i < particleCount * 0.4) { // Saturn Core
+                        const phi = Math.random() * Math.PI * 2;
+                        const theta = Math.random() * Math.PI;
+                        tx = 6 * Math.cos(phi) * Math.sin(theta);
+                        ty = 6 * Math.sin(phi) * Math.sin(theta);
+                        tz = 6 * Math.cos(theta);
+                    } else { // Saturn Rings
+                        const angle = Math.random() * Math.PI * 2;
+                        const radius = 10 + Math.random() * 5;
+                        tx = radius * Math.cos(angle);
+                        ty = radius * Math.sin(angle) * 0.3; // Flat ring
+                        tz = radius * Math.sin(angle);
+                    }
+                    r = 1; g = 0.8; b = 0.3; // Saturn Gold
+                } else {
+                    return; // No morph for random
+                }
+
+                pos[i*3] += (tx - pos[i*3]) * 0.08;
+                pos[i*3+1] += (ty - pos[i*3+1]) * 0.08;
+                pos[i*3+2] += (tz - pos[i*3+2]) * 0.08;
+                colors[i*3] += (r - colors[i*3]) * 0.05;
+                colors[i*3+1] += (g - colors[i*3+1]) * 0.05;
+                colors[i*3+2] += (b - colors[i*3+2]) * 0.05;
+            }
+            geometry.attributes.position.needsUpdate = true;
+            geometry.attributes.color.needsUpdate = true;
+        }
+
+        const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.6 });
         
         hands.onResults((results) => {
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                const landmarks = results.multiHandLandmarks[0];
-                const indexTip = landmarks[8];
-                const thumbTip = landmarks[4];
-                particles.position.x += ((indexTip.x - 0.5) * -45 - particles.position.x) * 0.2;
-                particles.position.y += ((indexTip.y - 0.5) * -35 - particles.position.y) * 0.2;
+                const marks = results.multiHandLandmarks[0];
+                
+                // Track Movement
+                particles.position.x += ((marks[8].x - 0.5) * -50 - particles.position.x) * 0.1;
+                particles.position.y += ((marks[8].y - 0.5) * -40 - particles.position.y) * 0.1;
 
-                if(Math.hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y) < 0.05) {
-                    statusBar.innerText = "System: Heart Form Activated";
-                    const posAttr = geometry.attributes.position;
-                    for (let i = 0; i < particleCount; i++) {
-                        const t = Math.random() * Math.PI * 2;
-                        const x = 16 * Math.pow(Math.sin(t), 3) * 0.6;
-                        const y = (13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t)) * 0.6;
-                        posAttr.array[i*3] += (x - posAttr.array[i*3]) * 0.1;
-                        posAttr.array[i*3+1] += (y - posAttr.array[i*3+1]) * 0.1;
-                    }
-                    posAttr.needsUpdate = true;
+                // GESTURE LOGIC
+                const distPinch = Math.hypot(marks[8].x - marks[4].x, marks[8].y - marks[4].y);
+                const isFist = marks[8].y > marks[5].y && marks[12].y > marks[9].y;
+
+                if (distPinch < 0.05) {
+                    currentShape = 'earth';
+                    statusBar.innerText = "MODE: EARTH SPHERE";
+                } else if (isFist) {
+                    currentShape = 'saturn';
+                    statusBar.innerText = "MODE: SATURN RINGS";
                 } else {
-                    statusBar.innerText = "System: Tracking Hand...";
+                    currentShape = 'random';
+                    statusBar.innerText = "MODE: FREE FLOW";
                 }
+                applyMorph();
             }
         });
 
@@ -147,64 +186,38 @@
             width: 640, height: 480
         });
 
-        // Smart Loading Logic
-        async function startLoading() {
+        startBtn.onclick = async () => {
             startBtn.style.display = 'none';
             loadingContainer.style.display = 'flex';
+            let p = 0;
+            let inter = setInterval(() => {
+                p += 2; if(p > 95) clearInterval(inter);
+                progressBar.style.width = p + "%";
+                percentText.innerText = p + "%";
+            }, 50);
+
+            initThree();
+            await cam.start();
             
-            let progress = 0;
-            let interval = setInterval(() => {
-                progress += Math.random() * 5;
-                if (progress >= 95) {
-                    clearInterval(interval);
-                    progress = 95; // Wait for real camera start
+            percentText.innerText = "100%";
+            progressBar.style.width = "100%";
+            
+            setTimeout(() => {
+                document.getElementById('overlay').style.opacity = '0';
+                setTimeout(() => document.getElementById('overlay').style.display = 'none', 800);
+                statusBar.style.display = 'block';
+                document.getElementById('tick-overlay').classList.add('show');
+                setTimeout(() => document.getElementById('tick-overlay').classList.remove('show'), 2500);
+                
+                function animate() {
+                    requestAnimationFrame(animate);
+                    particles.rotation.y += 0.003;
+                    renderer.render(scene, camera);
                 }
-                updateBar(progress);
-            }, 150);
-
-            try {
-                initThree();
-                await cam.start();
-                
-                // Finish progress
-                progress = 100;
-                updateBar(progress);
-                
-                setTimeout(() => {
-                    document.getElementById('overlay').style.opacity = '0';
-                    setTimeout(() => { document.getElementById('overlay').style.display = 'none'; }, 500);
-                    videoElement.style.display = 'block';
-                    statusBar.style.display = 'block';
-                    tick.classList.add('show');
-                    setTimeout(() => { tick.classList.remove('show'); }, 3000);
-                    
-                    function animate() {
-                        requestAnimationFrame(animate);
-                        particles.rotation.y += 0.002;
-                        renderer.render(scene, camera);
-                    }
-                    animate();
-                }, 500);
-                
-            } catch (err) {
-                alert("Camera Permission Required!");
-            }
-        }
-
-        function updateBar(p) {
-            progressBar.style.width = p + "%";
-            percentText.innerText = Math.floor(p) + "%";
-        }
-
-        startBtn.onclick = startLoading;
-
-        window.addEventListener('resize', () => {
-            if(camera) {
-                camera.aspect = window.innerWidth / window.innerHeight;
-                camera.updateProjectionMatrix();
-                renderer.setSize(window.innerWidth, window.innerHeight);
-            }
-        });
+                animate();
+            }, 600);
+        };
     </script>
 </body>
-</html>
+    </html>
+    
