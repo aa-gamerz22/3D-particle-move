@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI Particle System - Final</title>
+    <title>AI Particle System - Loading Pro</title>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         
-        /* Loading/Start Screen */
+        /* Main Start Overlay */
         #overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: radial-gradient(circle, #1a1a1a, #000);
@@ -16,12 +16,26 @@
         }
 
         #start-btn {
-            padding: 20px 40px; font-size: 20px; color: #000; background: #00ffff;
+            padding: 20px 50px; font-size: 22px; color: #000; background: #00ffff;
             border: none; border-radius: 50px; font-weight: bold; cursor: pointer;
-            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5); text-transform: uppercase;
+            box-shadow: 0 0 25px rgba(0, 255, 255, 0.6); text-transform: uppercase;
+            letter-spacing: 2px; transition: 0.3s;
         }
+        #start-btn:active { transform: scale(0.95); }
 
-        /* Success Tick Animation */
+        /* Loading Container */
+        #loading-container {
+            display: none; flex-direction: column; align-items: center; width: 250px; margin-top: 20px;
+        }
+        #progress-wrapper {
+            width: 100%; height: 8px; background: #333; border-radius: 10px; overflow: hidden; margin-bottom: 10px;
+        }
+        #progress-bar {
+            width: 0%; height: 100%; background: #00ffff; box-shadow: 0 0 15px #00ffff; transition: width 0.2s;
+        }
+        #percent-text { color: #00ffff; font-size: 18px; font-weight: bold; }
+
+        /* Success Tick */
         #tick-overlay {
             position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0);
             font-size: 80px; color: #00ff00; z-index: 2000;
@@ -33,28 +47,33 @@
         #tick-overlay.show { transform: translate(-50%, -50%) scale(1); }
 
         #webcam-preview {
-            position: absolute; bottom: 15px; right: 15px; width: 120px; 
+            position: absolute; bottom: 15px; right: 15px; width: 110px; 
             border-radius: 12px; transform: scaleX(-1); border: 2px solid #00ffff;
-            z-index: 5; background: #111;
+            z-index: 5; background: #111; display: none;
         }
 
         #status-bar {
             position: absolute; top: 15px; left: 15px; color: #00ffff;
-            background: rgba(0,0,0,0.5); padding: 8px 15px; border-radius: 20px;
-            font-size: 14px; pointer-events: none; z-index: 10;
+            background: rgba(0,0,0,0.6); padding: 8px 18px; border-radius: 25px;
+            font-size: 13px; font-weight: bold; z-index: 10; border: 1px solid #00ffff;
         }
     </style>
 </head>
 <body>
 
     <div id="overlay">
-        <h1 style="color:white; margin-bottom:20px;">AI HAND PARTICLES</h1>
-        <button id="start-btn">Start System</button>
-        <p style="color:gray; margin-top:15px;">Allow camera when prompted</p>
+        <h1 id="title" style="color:white; margin-bottom:30px; letter-spacing:3px;">AI PARTICLE GEN</h1>
+        <button id="start-btn">Initialize Engine</button>
+        
+        <div id="loading-container">
+            <div id="progress-wrapper"><div id="progress-bar"></div></div>
+            <div id="percent-text">0%</div>
+            <p style="color:gray; font-size:12px; margin-top:10px;">Loading AI Neural Models...</p>
+        </div>
     </div>
 
     <div id="tick-overlay">✔</div>
-    <div id="status-bar">System: Waiting...</div>
+    <div id="status-bar" style="display:none;">System: Ready</div>
     <video id="webcam-preview" autoplay playsinline></video>
     <div id="container"></div>
 
@@ -65,18 +84,19 @@
     <script>
         const videoElement = document.getElementById('webcam-preview');
         const startBtn = document.getElementById('start-btn');
-        const statusBar = document.getElementById('status-bar');
+        const loadingContainer = document.getElementById('loading-container');
+        const progressBar = document.getElementById('progress-bar');
+        const percentText = document.getElementById('percent-text');
         const tick = document.getElementById('tick-overlay');
+        const statusBar = document.getElementById('status-bar');
         
         let scene, camera, renderer, particles, geometry;
-        const particleCount = 4000;
+        const particleCount = 4500;
 
-        // 1. Initialize Three.js Scene
         function initThree() {
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
             camera.position.z = 25;
-
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(window.devicePixelRatio);
@@ -84,71 +104,41 @@
 
             geometry = new THREE.BufferGeometry();
             const pos = new Float32Array(particleCount * 3);
-            for(let i=0; i<particleCount*3; i++) {
-                pos[i] = (Math.random() - 0.5) * 50;
-            }
+            for(let i=0; i<particleCount*3; i++) pos[i] = (Math.random() - 0.5) * 50;
             geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-
-            const material = new THREE.PointsMaterial({
-                color: 0x00ffff,
-                size: 0.15,
-                blending: THREE.AdditiveBlending,
-                transparent: true
-            });
-
+            const material = new THREE.PointsMaterial({ color: 0x00ffff, size: 0.14, blending: THREE.AdditiveBlending, transparent: true });
             particles = new THREE.Points(geometry, material);
             scene.add(particles);
         }
 
-        // 2. Math for Morphing (Heart Shape)
-        function morphToHeart() {
-            const posAttr = geometry.attributes.position;
-            for (let i = 0; i < particleCount; i++) {
-                const t = Math.random() * Math.PI * 2;
-                const x = 16 * Math.pow(Math.sin(t), 3);
-                const y = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
-                
-                posAttr.array[i*3] += (x * 0.6 - posAttr.array[i*3]) * 0.1;
-                posAttr.array[i*3+1] += (y * 0.6 - posAttr.array[i*3+1]) * 0.1;
-                posAttr.array[i*3+2] += (0 - posAttr.array[i*3+2]) * 0.1;
-            }
-            posAttr.needsUpdate = true;
-        }
-
-        // 3. Hand Tracking Setup
         const hands = new Hands({
             locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
         });
 
-        hands.setOptions({
-            maxNumHands: 1,
-            modelComplexity: 1,
-            minDetectionConfidence: 0.6,
-            minTrackingConfidence: 0.6
-        });
-
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
+        
         hands.onResults((results) => {
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 const landmarks = results.multiHandLandmarks[0];
                 const indexTip = landmarks[8];
                 const thumbTip = landmarks[4];
+                particles.position.x += ((indexTip.x - 0.5) * -45 - particles.position.x) * 0.2;
+                particles.position.y += ((indexTip.y - 0.5) * -35 - particles.position.y) * 0.2;
 
-                // Smoothly move particles with finger
-                const targetX = (indexTip.x - 0.5) * -45;
-                const targetY = (indexTip.y - 0.5) * -35;
-                particles.position.x += (targetX - particles.position.x) * 0.2;
-                particles.position.y += (targetY - particles.position.y) * 0.2;
-
-                // Detect Pinch (Distance between index 8 and thumb 4)
-                const distance = Math.hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y);
-                if(distance < 0.05) {
-                    statusBar.innerText = "System: Heart Shape Activated!";
-                    morphToHeart();
+                if(Math.hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y) < 0.05) {
+                    statusBar.innerText = "System: Heart Form Activated";
+                    const posAttr = geometry.attributes.position;
+                    for (let i = 0; i < particleCount; i++) {
+                        const t = Math.random() * Math.PI * 2;
+                        const x = 16 * Math.pow(Math.sin(t), 3) * 0.6;
+                        const y = (13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t)) * 0.6;
+                        posAttr.array[i*3] += (x - posAttr.array[i*3]) * 0.1;
+                        posAttr.array[i*3+1] += (y - posAttr.array[i*3+1]) * 0.1;
+                    }
+                    posAttr.needsUpdate = true;
                 } else {
                     statusBar.innerText = "System: Tracking Hand...";
                 }
-            } else {
-                statusBar.innerText = "System: Hand not detected";
             }
         });
 
@@ -157,31 +147,56 @@
             width: 640, height: 480
         });
 
-        // 4. Execution Logic
-        startBtn.onclick = async () => {
-            document.getElementById('overlay').style.opacity = '0';
-            setTimeout(() => { document.getElementById('overlay').style.display = 'none'; }, 500);
+        // Smart Loading Logic
+        async function startLoading() {
+            startBtn.style.display = 'none';
+            loadingContainer.style.display = 'flex';
             
-            statusBar.innerText = "System: Starting Engine...";
-            initThree();
+            let progress = 0;
+            let interval = setInterval(() => {
+                progress += Math.random() * 5;
+                if (progress >= 95) {
+                    clearInterval(interval);
+                    progress = 95; // Wait for real camera start
+                }
+                updateBar(progress);
+            }, 150);
 
             try {
+                initThree();
                 await cam.start();
-                // Everything is loaded: Show Tick for 3 seconds
-                tick.classList.add('show');
-                setTimeout(() => { tick.classList.remove('show'); }, 3000);
                 
-                function animate() {
-                    requestAnimationFrame(animate);
-                    particles.rotation.y += 0.002;
-                    renderer.render(scene, camera);
-                }
-                animate();
+                // Finish progress
+                progress = 100;
+                updateBar(progress);
+                
+                setTimeout(() => {
+                    document.getElementById('overlay').style.opacity = '0';
+                    setTimeout(() => { document.getElementById('overlay').style.display = 'none'; }, 500);
+                    videoElement.style.display = 'block';
+                    statusBar.style.display = 'block';
+                    tick.classList.add('show');
+                    setTimeout(() => { tick.classList.remove('show'); }, 3000);
+                    
+                    function animate() {
+                        requestAnimationFrame(animate);
+                        particles.rotation.y += 0.002;
+                        renderer.render(scene, camera);
+                    }
+                    animate();
+                }, 500);
+                
             } catch (err) {
-                statusBar.innerText = "Error: Camera Denied";
-                alert("Please enable camera permissions!");
+                alert("Camera Permission Required!");
             }
-        };
+        }
+
+        function updateBar(p) {
+            progressBar.style.width = p + "%";
+            percentText.innerText = Math.floor(p) + "%";
+        }
+
+        startBtn.onclick = startLoading;
 
         window.addEventListener('resize', () => {
             if(camera) {
@@ -190,7 +205,6 @@
                 renderer.setSize(window.innerWidth, window.innerHeight);
             }
         });
-
     </script>
 </body>
 </html>
