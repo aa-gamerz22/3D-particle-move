@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Upside Down: Smooth & Camera Control</title>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
+        #start-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle, #1a0000, #000); display: flex; flex-direction: column;
+            justify-content: center; align-items: center; z-index: 10000; color: #ff0066;
+        }
+        #start-btn {
+            padding: 25px 60px; font-size: 1.8em; color: #fff; background: linear-gradient(to bottom, #900, #600);
+            border: 3px solid #ff0066; border-radius: 5px; cursor: pointer; box-shadow: 0 0 40px #ff0066; text-transform: uppercase;
+            letter-spacing: 3px; font-weight: bold; margin-top: 30px; transition: all 0.3s;
+        }
+        #start-btn:hover { background: linear-gradient(to bottom, #b00, #800); box-shadow: 0 0 60px #ff3399; }
+        #loading-bar-container { width: 300px; height: 10px; background: #330000; border: 1px solid #ff0066; margin-top: 20px; display: none; border-radius: 5px; overflow: hidden; }
+        #loading-bar { height: 100%; width: 0%; background: linear-gradient(to right, #ff0066, #ff9900); transition: width 0.5s; }
+        #ui-overlay {
+            position: fixed; top: 20px; left: 20px; color: #ff0066; z-index: 100;
+            background: rgba(20, 0, 10, 0.85); padding: 15px; border: 1px solid #ff0066; display: none;
+            font-size: 0.9em; text-shadow: 0 0 5px #ff0066;
+        }
+        #webcam-preview {
+            position: absolute; bottom: 20px; right: 20px; width: 150px; 
+            border: 2px solid #ff0066; transform: scaleX(-1); opacity: 0.7; z-index: 50; border-radius: 5px;
+        }
+        #reticle {
+            position: fixed; width: 20px; height: 20px; border: 2px solid #fff;
+            border-radius: 50%; pointer-events: none; transform: translate(-50%, -50%);
+            display: none; z-index: 1000; box-shadow: 0 0 15px #00ccff, 0 0 5px #fff;
+        }
+        #power-aura {
+            position: fixed; width: 50px; height: 50px; border-radius: 50%; pointer-events: none;
+            transform: translate(-50%, -50%); display: none; z-index: 999;
+            background: radial-gradient(circle, rgba(255, 0, 102, 0.4) 0%, rgba(255, 0, 102, 0) 70%);
+        }
+        .warning { color: #ff9900; font-size: 0.8em; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+    <div id="start-screen">
+        <h1 style="font-size: 3em; letter-spacing: 15px; text-shadow: 0 0 20px #ff0066, 0 0 40px #ff0066;">UPSIDE DOWN</h1>
+        <p style="margin-top: 10px; color: #aaa; text-align: center; max-width: 500px;">AUTHORIZING TELEKINESIS MODULE...<br>SYNC WITH THE VEIN NETWORK REQUIRED.</p>
+        <button id="start-btn">INITIALIZE POWERS</button>
+        <div id="loading-bar-container">
+            <div id="loading-bar"></div>
+        </div>
+        <p style="margin-top: 30px; color: #ccc;">🖐️ OPEN HAND - SELECT OBJECT</p>
+        <p style="color: #ccc;">👊 CLOSED FIST - BLAST OBJECT</p>
+        <p style="color: #ccc;">✌️ VICTORY - RELEASE OBJECT</p>
+        <p style="color: #ccc;">☝️ ONE FINGER - INCREASE BRIGHTNESS</p>
+        <p style="color: #ccc;">🖖 THREE FINGERS - DECREASE BRIGHTNESS</p>
+        <p style="color: #ccc;">👌 OK GESTURE - CONTROL CAMERA</p>
+        <p class="warning">⚠️ USING TEXTURES: front.jpg, front2.jpg, btop.jpg, surface.jpg (place in same folder).</p>
+    </div>
+
+    <div id="ui-overlay">SYSTEM STATUS: <span id="status">READY</span><br>POWER LEVEL: <span id="power">STABLE</span><br>BRIGHTNESS: <span id="brightness-val">100%</span><br>CAMERA MODE: <span id="cam-mode">NORMAL</span></div>
+    <div id="reticle"></div>
+    <div id="power-aura"></div>
+    <video id="webcam-preview" autoplay playsinline></video>
+    <div id="scene-container"></div>
+
+    <!-- Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        // ==================== GLOBAL STATE ====================
+        let scene, camera, renderer, listener;
+        let objects = [], particles = [], captured = null;
+        let veinLights = [];
+        let audioLoaded = false;
+        const sounds = { bg: null, blast: null, light: null };
+
+        // Brightness control
+        let ambientLight, redSun, blueFill;
+        let targetBrightness = 1.0;
+        let currentBrightness = 1.0;
+
+        // Camera control
+        let cameraControlActive = false;
+        let baseCameraPos = new THREE.Vector3(0, 40, 120);
+        let targetCameraOffset = new THREE.Vector2(0, 0); // x (yaw), y (pitch)
+        let currentCameraOffset = new THREE.Vector2(0, 0);
+
+        // Performance settings (optimized)
+        const VEIN_COUNT = 25;        // Slightly reduced for smoothness
+        const BUILDING_COUNT = 15;
+        const FOG_PARTICLE_COUNT = 600;
+
+        // Object movement bounds
+        const MOVE_LIMIT_X = 150;
+        const MOVE_LIMIT_Y = 80;
+        const MOVE_LIMIT_Z = 100;
+
+        // ==================== SHADERS ====================
+        const veinVertexShader = `
+            varying vec2 vUv;
+            varying vec3 vPosition;
+            uniform float uTime;
+            void main() {
+                vUv = uv;
+                vPosition = position;
+                vec3 pos = position;
+                pos.x += sin(position.y * 2.0 + uTime * 1.5) * 0.2;
+                pos.z += cos(position.x * 2.0 + uTime) * 0.2;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+            }
+        `;
+        const veinFragmentShader = `
+            varying vec2 vUv;
+            varying vec3 vPosition;
+            uniform float uTime;
+            void main() {
+                vec3 baseColor = vec3(0.7, 0.05, 0.1);
+                float glow = sin(vUv.x * 3.14159 * 4.0 + uTime * 3.0) * 0.5 + 0.5;
+                glow = pow(glow, 3.0) * 0.6;
+                float pulse = sin(uTime * 2.0 + vPosition.y * 5.0) * 0.3 + 0.7;
+                vec3 finalColor = baseColor + vec3(glow * 0.8, glow * 0.3, glow * 0.1) * pulse;
+                gl_FragColor = vec4(finalColor, 1.0);
+            }
+        `;
+
+        // ==================== ASSET LOADING ====================
+        function loadAssets() {
+            return new Promise(async (resolve, reject) => {
+                const totalAssets = 7; // 3 sounds + 4 textures
+                let loaded = 0;
+                const progressBar = document.getElementById('loading-bar');
+                document.getElementById('loading-bar-container').style.display = 'block';
+                const update = () => {
+                    loaded++;
+                    progressBar.style.width = (loaded / totalAssets * 100) + '%';
+                    if (loaded === totalAssets) {
+                        document.getElementById('status').textContent = 'ASSETS LOADED';
+                    }
+                };
+
+                const textureLoader = new THREE.TextureLoader();
+                
+                let frontTex, front2Tex, btopTex, surfaceTex;
+                
+                try {
+                    frontTex = await textureLoader.loadAsync('front.jpg');
+                } catch {
+                    console.warn('front.jpg not found, using generated');
+                    const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 256;
+                    const ctx = canvas.getContext('2d');
+                    ctx.fillStyle = '#4a3a3a'; ctx.fillRect(0,0,256,256);
+                    ctx.strokeStyle = '#7a5a5a'; ctx.lineWidth = 4;
+                    for (let i=0; i<256; i+=40) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,256); ctx.stroke(); }
+                    frontTex = new THREE.CanvasTexture(canvas);
+                }
+                update();
+
+                try {
+                    front2Tex = await textureLoader.loadAsync('front2.jpg');
+                } catch {
+                    console.warn('front2.jpg not found, using generated');
+                    const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 256;
+                    const ctx = canvas.getContext('2d');
+                    ctx.fillStyle = '#2a4a3a'; ctx.fillRect(0,0,256,256);
+                    ctx.strokeStyle = '#5a9a7a'; ctx.lineWidth = 4;
+                    for (let i=0; i<256; i+=40) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,256); ctx.stroke(); }
+                    front2Tex = new THREE.CanvasTexture(canvas);
+                }
+                update();
+
+                try {
+                    btopTex = await textureLoader.loadAsync('btop.jpg');
+                } catch {
+                    console.warn('btop.jpg not found, using generated');
+                    const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 256;
+                    const ctx = canvas.getContext('2d');
+                    ctx.fillStyle = '#2a2a2a'; ctx.fillRect(0,0,256,256);
+                    ctx.fillStyle = '#5a5a5a';
+                    for (let i=0; i<256; i+=32) ctx.fillRect(i,0,8,256);
+                    btopTex = new THREE.CanvasTexture(canvas);
+                }
+                update();
+
+                try {
+                    surfaceTex = await textureLoader.loadAsync('surface.jpg');
+                } catch {
+                    console.warn('surface.jpg not found, using generated');
+                    const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 512;
+                    const ctx = canvas.getContext('2d');
+                    ctx.fillStyle = '#1a1a1a'; ctx.fillRect(0,0,512,512);
+                    ctx.strokeStyle = '#3a3a3a'; ctx.lineWidth = 2;
+                    for (let i=0; i<512; i+=64) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,512); ctx.stroke(); }
+                    for (let i=0; i<512; i+=64) { ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(512,i); ctx.stroke(); }
+                    surfaceTex = new THREE.CanvasTexture(canvas);
+                }
+                update();
+
+                // Audio setup
+                listener = new THREE.AudioListener();
+                const audioLoader = new THREE.AudioLoader();
+
+                sounds.bg = new THREE.Audio(listener);
+                sounds.blast = new THREE.Audio(listener);
+                sounds.light = new THREE.Audio(listener);
+
+                const loadSound = (sound, url) => new Promise((res) => {
+                    audioLoader.load(url, 
+                        (buffer) => { sound.setBuffer(buffer); sound.setVolume(1.0); res(); },
+                        undefined,
+                        (err) => { console.warn('Audio missing:', url); res(); }
+                    );
+                });
+
+                await loadSound(sounds.bg, 'bg.mp3'); update();
+                await loadSound(sounds.blast, 'blast.mp3'); update();
+                await loadSound(sounds.light, 'light.mp3'); update();
+
+                if (sounds.bg.buffer) sounds.bg.setLoop(true);
+                audioLoaded = true;
+
+                resolve({ frontTex, front2Tex, btopTex, surfaceTex });
+            });
+        }
+
+        // ==================== SMOOTH LIGHTNING ====================
+        function createLightningBolt() {
+            if (sounds.light && audioLoaded && sounds.light.buffer) {
+                sounds.light.play();
+            }
+
+            // Smooth flash using CSS opacity transition
+            const flashDiv = document.createElement('div');
+            flashDiv.style.position = 'fixed';
+            flashDiv.style.top = '0';
+            flashDiv.style.left = '0';
+            flashDiv.style.width = '100%';
+            flashDiv.style.height = '100%';
+            flashDiv.style.backgroundColor = '#aaccff';
+            flashDiv.style.opacity = '0.7'; // Start less intense
+            flashDiv.style.pointerEvents = 'none';
+            flashDiv.style.zIndex = '9999';
+            flashDiv.style.mixBlendMode = 'screen';
+            flashDiv.style.transition = 'opacity 0.3s ease-out';
+            document.body.appendChild(flashDiv);
+            
+            // Fade out quickly
+            setTimeout(() => {
+                flashDiv.style.opacity = '0';
+                setTimeout(() => document.body.removeChild(flashDiv), 300);
+            }, 50);
+
+            // Multiple bolts with slight delay
+            const boltCount = 2 + Math.floor(Math.random() * 2);
+            for (let b = 0; b < boltCount; b++) {
+                setTimeout(() => {
+                    const points = [];
+                    const start = new THREE.Vector3( (Math.random()-0.5)*200, 100, (Math.random()-0.5)*200 );
+                    const end = new THREE.Vector3( (Math.random()-0.5)*200, 10, (Math.random()-0.5)*200 );
+                    const direction = new THREE.Vector3().subVectors(end, start);
+                    const segments = 12;
+                    for (let i = 0; i <= segments; i++) {
+                        const t = i / segments;
+                        const point = new THREE.Vector3().lerpVectors(start, end, t);
+                        if (i > 0 && i < segments) {
+                            const perp = new THREE.Vector3(-direction.y, direction.x, direction.z).normalize();
+                            const jitter = (Math.random() - 0.5) * 20;
+                            point.addScaledVector(perp, jitter);
+                        }
+                        points.push(point);
+                    }
+
+                    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                    const material = new THREE.LineBasicMaterial({ color: 0x88ccff });
+                    const bolt = new THREE.Line(geometry, material);
+                    scene.add(bolt);
+
+                    const light = new THREE.PointLight(0x88ccff, 4, 150);
+                    light.position.copy(start);
+                    scene.add(light);
+
+                    setTimeout(() => {
+                        scene.remove(bolt);
+                        scene.remove(light);
+                    }, 150);
+                }, b * 80);
+            }
+
+            // Pulse vein lights smoothly
+            veinLights.forEach(v => { if (v.light) v.light.intensity = 3.5; });
+            setTimeout(() => {
+                veinLights.forEach(v => {
+                    if (v.light) v.light.intensity = 1.0 + Math.sin(Date.now()*0.003) * 0.8;
+                });
+            }, 200);
+        }
+
+        // ==================== BLAST EFFECT ====================
+        function createBlast(pos) {
+            if (sounds.blast && audioLoaded && sounds.blast.buffer) {
+                sounds.blast.play();
+            }
+
+            const flashLight = new THREE.PointLight(0xff6600, 5, 50);
+            flashLight.position.copy(pos);
+            scene.add(flashLight);
+            setTimeout(() => scene.remove(flashLight), 100);
+
+            for (let i = 0; i < 30; i++) {
+                const pGeo = new THREE.SphereGeometry(Math.random() * 0.8 + 0.4, 6, 6);
+                const pMat = new THREE.MeshBasicMaterial({
+                    color: new THREE.Color().setHSL(Math.random() * 0.1 + 0.05, 1, 0.6),
+                    transparent: true
+                });
+                const p = new THREE.Mesh(pGeo, pMat);
+                p.position.copy(pos);
+
+                const angle = Math.random() * Math.PI * 2;
+                const power = Math.random() * 4 + 2;
+                p.userData.velocity = new THREE.Vector3(
+                    Math.cos(angle) * power,
+                    Math.random() * 5 + 2,
+                    Math.sin(angle) * power
+                );
+                p.userData.life = Math.random() * 1.5 + 1.0;
+                scene.add(p);
+                particles.push(p);
+            }
+
+            const ringGeo = new THREE.RingGeometry(1, 3, 24);
+            const ringMat = new THREE.MeshBasicMaterial({
+                color: 0xff9900,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.7
+            });
+            const ring = new THREE.Mesh(ringGeo, ringMat);
+            ring.position.copy(pos);
+            ring.position.y += 1;
+            ring.rotation.x = Math.PI / 2;
+            scene.add(ring);
+
+            let ringLife = 1.0;
+            const ringUpdate = () => {
+                ringLife -= 0.02;
+                if (ringLife <= 0) {
+                    scene.remove(ring);
+                    return;
+                }
+                ring.scale.setScalar(1 + (1 - ringLife) * 8);
+                ringMat.opacity = ringLife * 0.5;
+                requestAnimationFrame(ringUpdate);
+            };
+            ringUpdate();
+
+            document.getElementById('power').textContent = 'OVERLOAD';
+            setTimeout(() => {
+                document.getElementById('power').textContent = 'STABLE';
+            }, 1000);
+        }
+
+        // ==================== SCENE INIT ====================
+        function initScene(frontTex, front2Tex, btopTex, surfaceTex) {
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x120008, 0.0015);
+
+            // Sky
+            const skyGeo = new THREE.SphereGeometry(500, 32, 32);
+            const skyMat = new THREE.MeshStandardMaterial({ color: 0x1a0010, emissive: 0x0a0005 });
+            scene.add(new THREE.Mesh(skyGeo, skyMat));
+
+            // Fog particles
+            const fogParticlesGeo = new THREE.BufferGeometry();
+            const fogPositions = new Float32Array(FOG_PARTICLE_COUNT * 3);
+            for (let i = 0; i < FOG_PARTICLE_COUNT * 3; i += 3) {
+                fogPositions[i] = (Math.random() - 0.5) * 500;
+                fogPositions[i+1] = Math.random() * 80;
+                fogPositions[i+2] = (Math.random() - 0.5) * 500;
+            }
+            fogParticlesGeo.setAttribute('position', new THREE.BufferAttribute(fogPositions, 3));
+            scene.add(new THREE.Points(fogParticlesGeo, new THREE.PointsMaterial({ color: 0x442222, size: 5, transparent: true, opacity: 0.1 })));
+
+            // Camera - better initial angle
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 35, 130); // Slightly elevated and farther
+            camera.lookAt(0, 20, 0);
+            camera.add(listener);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // Lower for smoothness
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.getElementById('scene-container').appendChild(renderer.domElement);
+
+            // Lighting
+            ambientLight = new THREE.AmbientLight(0x442233, 0.4);
+            scene.add(ambientLight);
+
+            redSun = new THREE.DirectionalLight(0xff3366, 1.5);
+            redSun.position.set(30, 100, -30);
+            redSun.castShadow = true;
+            redSun.shadow.mapSize.width = 1024;
+            redSun.shadow.mapSize.height = 1024;
+            scene.add(redSun);
+
+            blueFill = new THREE.DirectionalLight(0x3366ff, 0.5);
+            blueFill.position.set(-50, 30, 50);
+            scene.add(blueFill);
+
+            // Ground
+            const groundGeo = new THREE.PlaneGeometry(800, 800, 64, 64);
+            const groundMat = new THREE.MeshStandardMaterial({
+                map: surfaceTex,
+                color: 0xffffff,
+                roughness: 0.9,
+                metalness: 0.05
+            });
+            groundMat.map.wrapS = groundMat.map.wrapT = THREE.RepeatWrapping;
+            groundMat.map.repeat.set(30, 30);
+            const ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            // Veins
+            const veinMaterial = new THREE.ShaderMaterial({
+                vertexShader: veinVertexShader,
+                fragmentShader: veinFragmentShader,
+                uniforms: { uTime: { value: 0 } },
+                side: THREE.DoubleSide
+            });
+
+            for (let i = 0; i < VEIN_COUNT; i++) {
+                const pts = [];
+                let curr = new THREE.Vector3((Math.random() - 0.5) * 350, 0.5, (Math.random() - 0.5) * 350);
+                for (let j = 0; j < 7; j++) {
+                    pts.push(curr.clone());
+                    curr.add(new THREE.Vector3(
+                        (Math.random() - 0.5) * 30,
+                        (Math.random() - 0.2) * 2,
+                        (Math.random() - 0.5) * 30
+                    ));
+                }
+                const curve = new THREE.CatmullRomCurve3(pts);
+                const tube = new THREE.TubeGeometry(curve, 50, Math.random() * 1.2 + 0.8, 8, false);
+                scene.add(new THREE.Mesh(tube, veinMaterial));
+
+                const light = new THREE.PointLight(0xff0066, 1.5, 20);
+                light.position.copy(pts[3]);
+                scene.add(light);
+                veinLights.push({ light, curve, progress: Math.random() });
+            }
+
+            // Buildings with varied front textures
+            const frontTextures = [frontTex, front2Tex];
+            for (let i = 0; i < BUILDING_COUNT; i++) {
+                const width = Math.random() * 12 + 10;
+                const depth = Math.random() * 12 + 10;
+                const height = Math.random() * 40 + 30;
+
+                const geo = new THREE.BoxGeometry(width, height, depth);
+                
+                const chosenFront = frontTextures[Math.floor(Math.random() * frontTextures.length)];
+                
+                const frontMat = new THREE.MeshStandardMaterial({
+                    map: chosenFront,
+                    color: 0xcccccc,
+                    roughness: 0.6,
+                    metalness: 0.2,
+                    emissive: new THREE.Color(0x111111)
+                });
+                chosenFront.wrapS = chosenFront.wrapT = THREE.RepeatWrapping;
+                chosenFront.repeat.set(2, 4);
+
+                const topMat = new THREE.MeshStandardMaterial({
+                    map: btopTex,
+                    color: 0xaaaaaa,
+                    roughness: 0.8,
+                    metalness: 0.3
+                });
+                btopTex.wrapS = btopTex.wrapT = THREE.RepeatWrapping;
+                btopTex.repeat.set(2, 2);
+
+                const materials = [
+                    frontMat, // right
+                    frontMat, // left
+                    topMat,   // top
+                    topMat,   // bottom
+                    frontMat, // front
+                    frontMat  // back
+                ];
+
+                const buildingGroup = new THREE.Group();
+                const building = new THREE.Mesh(geo, materials);
+                building.castShadow = true;
+                building.receiveShadow = true;
+                buildingGroup.add(building);
+
+                // Antenna
+                const antennaGeo = new THREE.CylinderGeometry(0.3, 0.3, 5);
+                const antennaMat = new THREE.MeshStandardMaterial({ color: 0xaa8866 });
+                const antenna = new THREE.Mesh(antennaGeo, antennaMat);
+                antenna.position.set(0, height/2 + 2.5, 0);
+                buildingGroup.add(antenna);
+
+                // Windows
+                const windowMat = new THREE.MeshStandardMaterial({
+                    color: 0xffaa33,
+                    emissive: 0xff5500,
+                    emissiveIntensity: 0.5
+                });
+                for (let w = 0; w < 6; w++) {
+                    const windowGeo = new THREE.BoxGeometry(1.2, 1.8, 0.3);
+                    const windowMesh = new THREE.Mesh(windowGeo, windowMat);
+                    windowMesh.position.set(
+                        (w - 2.5) * 2.2,
+                        Math.random() * height * 0.6 + height*0.2,
+                        depth/2 + 0.2
+                    );
+                    windowMesh.castShadow = true;
+                    buildingGroup.add(windowMesh);
+                }
+
+                buildingGroup.position.set(
+                    (Math.random() - 0.5) * 200,
+                    height / 2,
+                    (Math.random() - 0.5) * 100
+                );
+
+                scene.add(buildingGroup);
+                objects.push(buildingGroup);
+            }
+
+            // Animation loop
+            let clock = new THREE.Clock();
+            function animate() {
+                requestAnimationFrame(animate);
+                const delta = Math.min(clock.getDelta(), 0.1); // Cap delta for smoothness
+                const time = clock.elapsedTime;
+
+                // Smooth brightness
+                currentBrightness += (targetBrightness - currentBrightness) * 0.05;
+                ambientLight.intensity = 0.4 * currentBrightness;
+                redSun.intensity = 1.5 * currentBrightness;
+                blueFill.intensity = 0.5 * currentBrightness;
+
+                // Camera control
+                if (cameraControlActive) {
+                    // Smoothly move camera offset
+                    currentCameraOffset.lerp(targetCameraOffset, 0.05);
+                    // Apply to camera position: rotate around scene center (0,20,0)
+                    const radius = 130;
+                    const yaw = currentCameraOffset.x * 2.0; // Range ~ -2 to 2 rad
+                    const pitch = Math.max(-0.5, Math.min(0.8, currentCameraOffset.y * 1.5)); // Limit pitch
+                    camera.position.x = radius * Math.sin(yaw) * Math.cos(pitch);
+                    camera.position.y = 35 + radius * Math.sin(pitch);
+                    camera.position.z = radius * Math.cos(yaw) * Math.cos(pitch);
+                    camera.lookAt(0, 20, 0);
+                }
+
+                // Update vein lights
+                veinLights.forEach(v => {
+                    v.progress += delta * 0.1;
+                    if (v.progress > 1) v.progress = 0;
+                    const point = v.curve.getPointAt(v.progress);
+                    v.light.position.copy(point);
+                    v.light.intensity = (1.0 + Math.sin(time * 3 + v.progress * 10) * 0.8) * currentBrightness;
+                });
+
+                // Animate captured object with bounds
+                if (captured) {
+                    captured.rotation.y += delta * 1.5;
+                    // Clamp position to stay within view
+                    captured.position.x = Math.max(-MOVE_LIMIT_X, Math.min(MOVE_LIMIT_X, captured.position.x));
+                    captured.position.y = Math.max(10, Math.min(MOVE_LIMIT_Y, captured.position.y));
+                    captured.position.z = Math.max(-MOVE_LIMIT_Z, Math.min(MOVE_LIMIT_Z, captured.position.z));
+                }
+
+                // Update particles
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    const p = particles[i];
+                    p.userData.life -= delta;
+                    if (p.userData.life <= 0) {
+                        scene.remove(p);
+                        particles.splice(i, 1);
+                    } else {
+                        p.position.add(p.userData.velocity.clone().multiplyScalar(delta * 30)); // Scale by delta
+                        p.userData.velocity.y -= delta * 20;
+                        p.scale.setScalar(p.userData.life);
+                    }
+                }
+
+                renderer.render(scene, camera);
+            }
+            animate();
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        }
+
+        // ==================== HAND TRACKING ====================
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 0,
+            minDetectionConfidence: 0.7,
+            minTrackingConfidence: 0.7
+        });
+
+        hands.onResults((results) => {
+            const reticle = document.getElementById('reticle');
+            const aura = document.getElementById('power-aura');
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                reticle.style.display = 'block';
+                aura.style.display = 'block';
+
+                const x = landmarks[8].x * window.innerWidth;
+                const y = landmarks[8].y * window.innerHeight;
+                reticle.style.left = x + "px";
+                reticle.style.top = y + "px";
+                aura.style.left = x + "px";
+                aura.style.top = y + "px";
+
+                const worldX = (landmarks[8].x - 0.5) * -250;
+                const worldY = (landmarks[8].y - 0.5) * -180 + 50;
+                const worldZ = 0; // For simplicity
+
+                // Landmark indices
+                const idxTip = landmarks[8];
+                const idxPip = landmarks[6];
+                const midTip = landmarks[12];
+                const midPip = landmarks[10];
+                const ringTip = landmarks[16];
+                const ringPip = landmarks[14];
+                const pinkyTip = landmarks[20];
+                const pinkyPip = landmarks[18];
+                const thumbTip = landmarks[4];
+                const thumbIp = landmarks[3];
+
+                // Gesture detection
+                const isOpen = (idxTip.y < idxPip.y - 0.05) && (midTip.y < midPip.y - 0.05) && (ringTip.y < ringPip.y - 0.05);
+                const isFist = (idxTip.y > idxPip.y) && (midTip.y > midPip.y) && (ringTip.y > ringPip.y);
+                const isVictory = (idxTip.y < idxPip.y - 0.05) && (midTip.y < midPip.y - 0.05) && (ringTip.y > ringPip.y);
+
+                const oneFinger = (idxTip.y < idxPip.y - 0.05) && 
+                                  (midTip.y > midPip.y) && 
+                                  (ringTip.y > ringPip.y) && 
+                                  (pinkyTip.y > pinkyPip.y);
+
+                const threeFingers = (idxTip.y < idxPip.y - 0.05) && 
+                                     (midTip.y < midPip.y - 0.05) && 
+                                     (ringTip.y < ringPip.y - 0.05) && 
+                                     (pinkyTip.y > pinkyPip.y);
+
+                // OK gesture: thumb and index tip close, other fingers extended
+                const thumbIndexDist = Math.hypot(thumbTip.x - idxTip.x, thumbTip.y - idxTip.y, thumbTip.z - idxTip.z);
+                const okGesture = (thumbIndexDist < 0.1) && 
+                                  (midTip.y < midPip.y - 0.05) && 
+                                  (ringTip.y < ringPip.y - 0.05) && 
+                                  (pinkyTip.y < pinkyPip.y - 0.05);
+
+                // Toggle camera control on OK gesture
+                if (okGesture) {
+                    if (!cameraControlActive) {
+                        cameraControlActive = true;
+                        document.getElementById('cam-mode').textContent = 'ACTIVE';
+                    }
+                    // Update target offset based on hand position relative to screen
+                    // Map hand position to camera yaw/pitch
+                    targetCameraOffset.x = (landmarks[9].x - 0.5) * 2.5; // Use palm center for smoother
+                    targetCameraOffset.y = (landmarks[9].y - 0.5) * 1.5;
+                } else {
+                    if (cameraControlActive) {
+                        cameraControlActive = false;
+                        document.getElementById('cam-mode').textContent = 'NORMAL';
+                        // Optionally reset to default position smoothly? We'll leave it where it is.
+                    }
+                }
+
+                // Brightness control
+                if (oneFinger) {
+                    targetBrightness = Math.min(1.8, targetBrightness + 0.02);
+                    document.getElementById('brightness-val').textContent = Math.round(targetBrightness * 100) + '%';
+                } else if (threeFingers) {
+                    targetBrightness = Math.max(0.5, targetBrightness - 0.02);
+                    document.getElementById('brightness-val').textContent = Math.round(targetBrightness * 100) + '%';
+                }
+
+                // Object selection (only if camera not active to avoid conflict)
+                if (!cameraControlActive && !captured && isOpen) {
+                    let closestObj = null;
+                    let closestDist = 30;
+                    objects.forEach(obj => {
+                        const dx = obj.position.x - worldX;
+                        const dz = obj.position.z - 0;
+                        const dist = Math.sqrt(dx*dx + dz*dz);
+                        if (dist < closestDist) {
+                            closestDist = dist;
+                            closestObj = obj;
+                        }
+                    });
+                    if (closestObj) {
+                        captured = closestObj;
+                        aura.style.background = 'radial-gradient(circle, rgba(0, 204, 255, 0.6) 0%, rgba(0, 204, 255, 0) 70%)';
+                        document.getElementById('status').textContent = 'OBJECT GRABBED';
+                    }
+                }
+
+                // Control captured object
+                if (captured) {
+                    if (isFist) {
+                        createBlast(captured.position.clone());
+                        captured.position.y = -100;
+                        captured = null;
+                        aura.style.background = 'radial-gradient(circle, rgba(255, 0, 102, 0.4) 0%, rgba(255, 0, 102, 0) 70%)';
+                        document.getElementById('status').textContent = 'TARGET DESTROYED';
+                    } else if (isVictory) {
+                        captured = null;
+                        aura.style.background = 'radial-gradient(circle, rgba(255, 0, 102, 0.4) 0%, rgba(255, 0, 102, 0) 70%)';
+                        document.getElementById('status').textContent = 'OBJECT RELEASED';
+                    } else {
+                        // Move object with bounds
+                        const targetPos = new THREE.Vector3(worldX, worldY, 0);
+                        captured.position.lerp(targetPos, 0.25);
+                        // Clamp after lerp
+                        captured.position.x = Math.max(-MOVE_LIMIT_X, Math.min(MOVE_LIMIT_X, captured.position.x));
+                        captured.position.y = Math.max(10, Math.min(MOVE_LIMIT_Y, captured.position.y));
+                        captured.position.z = Math.max(-MOVE_LIMIT_Z, Math.min(MOVE_LIMIT_Z, captured.position.z));
+                    }
+                } else {
+                    aura.style.background = 'radial-gradient(circle, rgba(255, 0, 102, 0.4) 0%, rgba(255, 0, 102, 0) 70%)';
+                    if (isOpen) document.getElementById('status').textContent = 'READY TO GRAB';
+                }
+            } else {
+                reticle.style.display = 'none';
+                aura.style.display = 'none';
+                document.getElementById('status').textContent = 'AWAITING INPUT';
+            }
+        });
+
+        const cam = new Camera(document.getElementById('webcam-preview'), {
+            onFrame: async () => {
+                await hands.send({ image: document.getElementById('webcam-preview') });
+            },
+            width: 640,
+            height: 480
+        });
+
+        // ==================== START ====================
+        document.getElementById('start-btn').addEventListener('click', async () => {
+            document.getElementById('start-btn').disabled = true;
+            document.getElementById('start-btn').style.opacity = '0.7';
+            document.getElementById('status').textContent = 'LOADING ASSETS...';
+
+            try {
+                const textures = await loadAssets();
+                document.getElementById('start-screen').style.display = 'none';
+                document.getElementById('ui-overlay').style.display = 'block';
+                initScene(textures.frontTex, textures.front2Tex, textures.btopTex, textures.surfaceTex);
+                await cam.start();
+                if (sounds.bg && audioLoaded && sounds.bg.buffer) {
+                    sounds.bg.setVolume(0.4);
+                    sounds.bg.play();
+                }
+                setInterval(createLightningBolt, 7000);
+                document.getElementById('status').textContent = 'SYSTEM ACTIVE';
+            } catch (error) {
+                console.error("Init failed:", error);
+                document.getElementById('status').textContent = 'INIT FAILED';
+                alert("Failed to initialize. Check console and ensure texture files exist.");
+            }
+        });
+    </script>
+</body>
+</html>
